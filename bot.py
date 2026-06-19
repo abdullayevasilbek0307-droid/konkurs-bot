@@ -7,7 +7,7 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.context import FSMContext
 
 # 1. SOZLAMALAR
-BOT_TOKEN = "8646478674:AAGCnz-J99VuhmZlCTU6Cq0vAvd2mFbGayg"  # Tokeningiz
+BOT_TOKEN = "8646478674:AAEr74a8nLIpoOxfMACC_jVBJhcqEgnLk3k"  # Tokeningiz
 ADMIN_ID = 8236886172  # Admin ID
 
 logging.basicConfig(level=logging.INFO)
