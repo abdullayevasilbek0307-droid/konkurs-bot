@@ -183,10 +183,7 @@ async def main():
     # Endi Telegram bot xabarlarni bemalol eshitadi:
     await dp.start_polling(bot)
 
-if __name__ == "__main__":
-    asyncio.run(main())
 from aiohttp import web
-import asyncio
 
 # Render o'chib qolmasligi uchun soxta veb-server
 async def handle(request):
@@ -200,27 +197,17 @@ async def start_server():
     site = web.TCPSite(runner, '0.0.0.0', 10000)
     await site.start()
 
-# Botni ishga tushirish qismida (main funksiyada) buni chaqiring:
-# asyncio.create_task(start_server())
-import asyncio
-from aiohttp import web
-
-# Render uchun oddiy port ochuvchi xizmat
-async def handle(request):
-    return web.Response(text="Bot muvaffaqiyatli ishlayapti!")
-
+# Yagona asosiy main funksiyasi
 async def main():
-    # Render talab qiladigan portni fonda ochamiz
-    app = web.Application()
-    app.router.add_get('/', handle)
-    runner = web.AppRunner(app)
-    await runner.setup()
-    site = web.TCPSite(runner, '0.0.0.0', 10000)
-    await site.start()
+    # Veb-serverni fonda ishga tushiramiz
+    await start_server()
     
-    # Telegram botni ishga tushiramiz
-    await dp.start_polling(bot)
+    # Telegram botni ishga tushirish
+    try:
+        await dp.start_polling(bot)
+    finally:
+        await bot.session.close()
 
-if __name__ == '__main__':
+if __name__ == "__main__":
+    import asyncio
     asyncio.run(main())
-    
