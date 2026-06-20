@@ -52,13 +52,23 @@ class AdminStates(StatesGroup):
 async def check_sub(user_id: int) -> bool:
     cursor.execute("SELECT channel_id FROM channels")
     channels = cursor.fetchall()
+    
+    # Agar bazada umuman kanal qo'shilmagan bo'lsa, tekshirmasdan True qaytaradi
+    if not channels:
+        return True
+        
     for ch in channels:
         try:
+            # ch[0] ichida @kanal_username yoki ID bo'ladi
             member = await bot.get_chat_member(chat_id=ch[0], user_id=user_id)
             if member.status in ['left', 'kicked']:
                 return False
-        except Exception:
+        except Exception as e:
+            # Agar bot kanalda admin bo'lmasa yoki kanal topilmasa, xatolikni ko'rish uchun:
+            print(f"Kanalni tekshirishda xatolik ({ch[0]}): {e}")
+            # Xatolik bo'lsa ham majburiy obunani buzmaslik uchun False qaytaramiz
             return False
+            
     return True
 
 async def get_sub_keyboard():
