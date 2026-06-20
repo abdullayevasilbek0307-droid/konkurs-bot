@@ -202,3 +202,25 @@ async def start_server():
 
 # Botni ishga tushirish qismida (main funksiyada) buni chaqiring:
 # asyncio.create_task(start_server())
+import asyncio
+from aiohttp import web
+
+# Render uchun oddiy port ochuvchi xizmat
+async def handle(request):
+    return web.Response(text="Bot muvaffaqiyatli ishlayapti!")
+
+async def main():
+    # Render talab qiladigan portni fonda ochamiz
+    app = web.Application()
+    app.router.add_get('/', handle)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, '0.0.0.0', 10000)
+    await site.start()
+    
+    # Telegram botni ishga tushiramiz
+    await dp.start_polling(bot)
+
+if __name__ == '__main__':
+    asyncio.run(main())
+    
