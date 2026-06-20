@@ -4,9 +4,10 @@ import sqlite3
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
+from aiogram.client.default import DefaultBotProperties
 
 # 1. ASOSIY SOZLAMALAR
-BOT_TOKEN = "8646478674:AAEr74a8nLIpoOxfMACC_jVBJhcqEgnLk3k"  # <-- Yangi tokeningizni qo'ying
+BOT_TOKEN = "8646478674:AAEr74a8nLIpoOxfMACC_jVBJhcqEgnLk3k"  # <-- Bot tokeningizni shu yerga qo'ying
 ADMIN_ID = 8236886172  # <-- Siz yuborgan Telegram ID
 
 # Majburiy a'zolik uchun kanal va guruh sozlamalari
@@ -15,7 +16,11 @@ REQUIRED_CHANNELS = [
     {"id": -1001914961318, "name": "Al Matin Mebel group (Guruh)"}
 ]
 
-bot = Bot(token=BOT_TOKEN, parse_mode="HTML")
+# Aiogram 3.x uchun to'g'ri sozlama
+bot = Bot(
+    token=BOT_TOKEN, 
+    default=DefaultBotProperties(parse_mode="HTML")
+)
 dp = Dispatcher()
 
 db_conn = sqlite3.connect("konkurs.db")
