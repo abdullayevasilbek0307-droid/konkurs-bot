@@ -7,7 +7,7 @@ from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQu
 from aiogram.client.default import DefaultBotProperties
 
 # 1. ASOSIY SOZLAMALAR
-BOT_TOKEN = "8646478674:AAEr74a8nLIpoOxfMACC_jVBJhcqEgnLk3k"  # <-- Bot tokeningizni shu yerga qo'ying
+BOT_TOKEN = "8646478674:AAE81PMd2Z01E2iE94mxSfR3ezuYOq81X4A"  # <-- Bot tokeningizni shu yerga qo'ying
 ADMIN_ID = 8236886172  # <-- Siz yuborgan Telegram ID
 
 # Majburiy a'zolik uchun kanal va guruh sozlamalari
