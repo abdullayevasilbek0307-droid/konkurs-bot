@@ -178,7 +178,7 @@ async def callback_terms(call: CallbackQuery):
 # 4. BOTNI ISHGA TUSHIRISH
 async def main():
     # Veb-serverni asosiy kodni bloklamasdan, orqa fonda (task qilib) ishga tushiramiz:
-    asyncio.create_task(start_server())
+   
     
     # Endi Telegram bot xabarlarni bemalol eshitadi:
     await dp.start_polling(bot)
