@@ -1,259 +1,184 @@
-import logging
+import os
 import sqlite3
-from aiogram import Bot, Dispatcher, types, F
-from aiogram.filters import CommandStart, Command
-from aiogram.utils.keyboard import InlineKeyboardBuilder
-from aiogram.fsm.state import State, StatesGroup
-from aiogram.fsm.context import FSMContext
+from aiogram import Bot, Dispatcher, executor, types
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
-# 1. SOZLAMALAR
-BOT_TOKEN = "8646478674:AAEr74a8nLIpoOxfMACC_jVBJhcqEgnLk3k"  # Tokeningiz
-ADMIN_ID = 8236886172  # Admin ID
+# 1. ASOSIY SOZLAMALAR
+BOT_TOKEN = "8646478674:AAEr74a8nLIpoOxfMACC_jVBJhcqEgnLk3k"  # <-- BotFather'dan olgan yangi tokeningizni qo'ying
+ADMIN_ID = 8236886172  # <-- O'zingizning Telegram ID-ingizni raqamlar bilan yozing
 
-logging.basicConfig(level=logging.INFO)
-bot = Bot(token=BOT_TOKEN)
-dp = Dispatcher()
+# Majburiy a'zolik uchun kanal va guruh sozlamalari
+REQUIRED_CHANNELS = [
+    {"id": "@Al_Matin_Mebel", "name": "Al Matin Mebel (Kanal)"},
+    {"id": -1001914961318, "name": "Al Matin Mebel group (Guruh)"}
+]
 
-# 2. MA'LUMOTLAR BAZASI BILAN ISHLASH
-conn = sqlite3.connect("konkurs_baza.db")
-cursor = conn.cursor()
+# Botni va ma'lumotlar bazasini ishga tushirish
+bot = Bot(token=BOT_TOKEN, parse_mode=types.ParseMode.HTML)
+dp = Dispatcher(bot)
 
+db_conn = sqlite3.connect("konkurs.db")
+cursor = db_conn.cursor()
+
+# Bazani yaratish
 cursor.execute("""
 CREATE TABLE IF NOT EXISTS users (
     user_id INTEGER PRIMARY KEY,
-    username TEXT,
-    ball INTEGER DEFAULT 0,
-    invited_by INTEGER DEFAULT 0
-)""")
+    referred_by INTEGER,
+    score INTEGER DEFAULT 0
+)
+""")
+db_conn.commit()
 
-cursor.execute("""
-CREATE TABLE IF NOT EXISTS channels (
-    channel_id TEXT PRIMARY KEY,
-    channel_name TEXT
-)""")
-
-cursor.execute("""
-CREATE TABLE IF NOT EXISTS settings (
-    key TEXT PRIMARY KEY,
-    value TEXT
-)""")
-
-# Standart sozlamalarni kiritish (HTML formatida xavfsiz holatga keltirildi)
-cursor.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('shartlar', 'Konkurs shartlari: Kanallarga a''zo bo''ling va do''stlaringizni taklif qilib ball yiging!')")
-cursor.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('goliblar_soni', '5')")
-conn.commit()
-
-class AdminStates(StatesGroup):
-    reklama_kutish = State()
-    kanal_id_kutish = State()
-    shart_kutish = State()
-
-# 3. YORDAMCHI FUNKSIYALAR
-async def check_sub(user_id: int) -> bool:
-    cursor.execute("SELECT channel_id FROM channels")
-    channels = cursor.fetchall()
-    
-    # Agar bazada umuman kanal qo'shilmagan bo'lsa, tekshirmasdan True qaytaradi
-    if not channels:
-        return True
-        
-    for ch in channels:
+# 2. YORDAMCHI FUNKSIYALAR (Majburiy obunani tekshirish)
+async def check_subscription(user_id: int) -> bool:
+    for chat in REQUIRED_CHANNELS:
         try:
-            # ch[0] ichida @kanal_username yoki ID bo'ladi
-            member = await bot.get_chat_member(chat_id=ch[0], user_id=user_id)
+            member = await bot.get_chat_member(chat_id=chat["id"], user_id=user_id)
             if member.status in ['left', 'kicked']:
                 return False
-        except Exception as e:
-            # Agar bot kanalda admin bo'lmasa yoki kanal topilmasa, xatolikni ko'rish uchun:
-            print(f"Kanalni tekshirishda xatolik ({ch[0]}): {e}")
-            # Xatolik bo'lsa ham majburiy obunani buzmaslik uchun False qaytaramiz
+        except Exception:
+            # Agar bot kanalda admin bo'lmasa yoki xato bo'lsa, tekshiruvdan o'tkazmaydi
             return False
-            
     return True
 
-async def get_sub_keyboard():
-    cursor.execute("SELECT channel_id, channel_name FROM channels")
-    channels = cursor.fetchall()
-    builder = InlineKeyboardBuilder()
-    for ch in channels:
-        url = f"https://t.me/{ch[0].replace('@', '')}" if ch[0].startswith('@') else ch[0]
-        builder.button(text=f"➕ {ch[1]}", url=url)
-    builder.button(text="✅ Tekshirish", callback_data="check_subscription")
-    builder.adjust(1)
-    return builder.as_markup()
+def get_subscription_keyboard():
+    keyboard = InlineKeyboardMarkup(row_width=1)
+    # Kanal va guruh uchun tugmalar
+    keyboard.add(InlineKeyboardButton(text="📢 Al Matin Mebel (Kanal)", url="https://t.me/Al_Matin_Mebel"))
+    keyboard.add(InlineKeyboardButton(text="💬 Al Matin Mebel group", url="https://t.me/+f0wV4eD1h701N2Ri" if "https" in str(REQUIRED_CHANNELS[1]["id"]) else f"https://t.me/c/{str(REQUIRED_CHANNELS[1]['id'])[4:]}/1"))
+    # Tekshirish tugmasi
+    keyboard.add(InlineKeyboardButton(text="✅ Obunani tekshirish", callback_data="check_sub"))
+    return keyboard
 
-def main_keyboard(user_id):
-    builder = InlineKeyboardBuilder()
-    builder.button(text="🔗 Taklif havolasi (Link)", callback_data="get_link")
-    builder.button(text="📊 Balimni ko'rish", callback_data="my_balance")
-    builder.button(text="🏆 TOP Reyting", callback_data="top_rating")
-    builder.button(text="🎁 Konkurs Shartlari", callback_data="view_rules")
-    if user_id == ADMIN_ID:
-        builder.button(text="⚙️ Admin Panel", callback_data="admin_panel")
-    builder.adjust(2, 2)
-    return builder.as_markup()
+def get_main_keyboard():
+    keyboard = InlineKeyboardMarkup(row_width=2)
+    keyboard.add(
+        InlineKeyboardButton(text="🔗 Referal havolam", callback_data="my_link"),
+        InlineKeyboardButton(text="📊 Balimni ko'rish", callback_data="my_score")
+    )
+    keyboard.add(
+        InlineKeyboardButton(text="🏆 Top Reyting", callback_data="top_rating"),
+        InlineKeyboardButton(text="🎁 Konkurs shartlari", callback_data="terms")
+    )
+    return keyboard
 
-# 4. BOT BUYRUQLARI VA KOD QISMI
-
-@dp.message(CommandStart())
-async def start_cmd(message: types.Message):
+# 3. HANDLERLAR (Buyruqlar va tugmalar)
+@dp.message_handler(commands=['start'])
+async def start_command(message: types.Message):
     user_id = message.from_user.id
-    username = message.from_user.username or "Foydalanuvchi"
+    args = message.get_args()
     
-    args = message.text.split()
-    referrer_id = int(args[1]) if len(args) > 1 and args[1].isdigit() else 0
-
-    cursor.execute("SELECT * FROM users WHERE user_id = ?", (user_id,))
+    # Foydalanuvchini bazaga qo'shish (agar yo'q bo'lsa)
+    cursor.execute("SELECT user_id FROM users WHERE user_id = ?", (user_id,))
     user = cursor.fetchone()
     
     if not user:
-        cursor.execute("INSERT INTO users (user_id, username, invited_by) VALUES (?, ?, ?)", 
-                       (user_id, username, referrer_id))
-        conn.commit()
+        referred_by = None
+        if args and args.isdigit() and int(args) != user_id:
+            referred_by = int(args)
+        
+        cursor.execute("INSERT INTO users (user_id, referred_by, score) VALUES (?, ?, 0)", (user_id, referred_by))
+        db_conn.commit()
+        
+        # Referal egasiga ball berish (Faqat majburiy obunadan o'tsa beriladi)
+        if referred_by:
+            # Diqqat: Ball obunani tekshirganda qo'shiladi (pastda callback_query'da)
+            pass
 
-    if not await check_sub(user_id):
-        await message.answer("❌ <b>Botdan foydalanish uchun homiy kanallarga a'zo bo'ling!</b>", 
-                             reply_markup=await get_sub_keyboard(), parse_mode="HTML")
+    # Obunani tekshirish
+    is_sub = await check_subscription(user_id)
+    if not is_sub:
+        await message.answer(
+            "👋 <b>Assalomu alaykum!</b>\n\nKonkursda qatnashish uchun quyidagi kanal va guruhimizga obuna bo'lishingiz shart:",
+            reply_markup=get_subscription_keyboard()
+        )
+    else:
+        await message.answer("🎉 <b>Konkurs botimizga xush kelibsiz!</b>\nQuyidagi tugmalardan foydalaning:", reply_markup=get_main_keyboard())
+
+@dp.callback_query_handler(text="check_sub")
+async def callback_check_sub(call: types.CallbackQuery):
+    user_id = call.from_user.id
+    is_sub = await check_subscription(user_id)
+    
+    if is_sub:
+        # Agar foydalanuvchi endi obuna bo'lgan bo'lsa va uni kimdir taklif qilgan bo'lsa, taklif qilganga 1 ball beramiz
+        cursor.execute("SELECT referred_by, score FROM users WHERE user_id = ?", (user_id,))
+        res = cursor.fetchone()
+        if res and res[0]:
+            ref_id = res[0]
+            # Referal egasiga ball berilganmi yo'qmi tekshirish (Double ball berishni oldini olish)
+            cursor.execute("SELECT score FROM users WHERE user_id = ?", (ref_id,))
+            ref_user = cursor.fetchone()
+            if ref_user:
+                cursor.execute("UPDATE users SET score = score + 1 WHERE user_id = ?", (ref_id,))
+                cursor.execute("UPDATE users SET referred_by = NULL WHERE user_id = ?", (user_id,)) # Qayta ball bermaslik uchun
+                db_conn.commit()
+                try:
+                    await bot.send_message(chat_id=ref_id, text="🎉 <b>Siz taklif qilgan foydalanuvchi kanallarga a'zo bo'ldi va sizga 1 ball berildi!</b>")
+                except:
+                    pass
+
+        await call.message.delete()
+        await call.message.answer("🎉 <b>Tabriklaymiz, obuna tasdiqlandi!</b>\nKonkurs menyusi ochildi:", reply_markup=get_main_keyboard())
+    else:
+        await call.answer("❌ Siz hali ham barcha kanal yoki guruhlarga a'zo bo'lmadingiz!", show_alert=True)
+
+@dp.callback_query_handler(text="my_link")
+async def callback_my_link(call: types.CallbackQuery):
+    if not await check_subscription(call.from_user.id):
+        await call.message.answer("❌ Konkursda qatnashish uchun avval obuna bo'ling!", reply_markup=get_subscription_keyboard())
+        return
+        
+    bot_info = await bot.get_me()
+    ref_link = f"https://t.me/{bot_info.username}?start={call.from_user.id}"
+    await call.message.answer(
+        f"🔗 <b>Sizning referal havolangiz:</b>\n\n<code>{ref_link}</code>\n\n"
+        f"Ushbu havolani do'stlaringizga tarqating. Har bir a'zo bo'lgan do'stingiz uchun <b>1 ball</b> beriladi!",
+        disable_web_page_preview=True
+    )
+
+@dp.callback_query_handler(text="my_score")
+async def callback_my_score(call: types.CallbackQuery):
+    if not await check_subscription(call.from_user.id):
+        await call.message.answer("❌ Konkursda qatnashish uchun avval obuna bo'ling!", reply_markup=get_subscription_keyboard())
         return
 
-    await message.answer(f"👋 Salom {message.from_user.full_name}!\n🏆 Konkurs botimizga xush kelibsiz!", 
-                         reply_markup=main_keyboard(user_id))
+    cursor.execute("SELECT score FROM users WHERE user_id = ?", (call.from_user.id,))
+    res = cursor.fetchone()
+    score = res[0] if res else 0
+    await call.message.answer(f"📊 <b>Sizning joriy ballaringiz:</b> {score} ball")
 
-@dp.callback_query(F.data == "check_subscription")
-async def check_subscription_callback(call: types.CallbackQuery):
-    user_id = call.from_user.id
-    if await check_sub(user_id):
-        cursor.execute("SELECT invited_by, ball FROM users WHERE user_id = ?", (user_id,))
-        user_info = cursor.fetchone()
-        
-        if user_info and user_info[0] > 0:
-            ref_id = user_info[0]
-            cursor.execute("UPDATE users SET ball = ball + 1 WHERE user_id = ?", (ref_id,))
-            cursor.execute("UPDATE users SET invited_by = -1 WHERE user_id = ?", (user_id,))
-            conn.commit()
-            try:
-                await bot.send_message(ref_id, f"🎉 Bitta do'stingiz kanallarga a'zo bo'ldi va sizga <b>1 ball</b> berildi!", parse_mode="HTML")
-            except:
-                pass
-                
-        await call.message.delete()
-        await call.message.answer("🎉 Tabriklaymiz, barcha kanallarga a'zolik tasdiqlandi!", reply_markup=main_keyboard(user_id))
-    else:
-        await call.answer("❌ Hamma kanallarga a'zo bo'lmadingiz!", show_alert=True)
+@dp.callback_query_handler(text="top_rating")
+async def callback_top_rating(call: types.CallbackQuery):
+    if not await check_subscription(call.from_user.id):
+        await call.message.answer("❌ Konkursda qatnashish uchun avval obuna bo'ling!", reply_markup=get_subscription_keyboard())
+        return
 
-@dp.callback_query(F.data == "get_link")
-async def get_link(call: types.CallbackQuery):
-    bot_info = await bot.get_me()
-    link = f"https://t.me/{bot_info.username}?start={call.from_user.id}"
-    await call.message.answer(f"🔗 Sizning referal havolangiz:\n<code>{link}</code>\n\nUshbu havolani do'stlaringizga tarqating va ball yiging!", parse_mode="HTML")
-    await call.answer()
-
-@dp.callback_query(F.data == "my_balance")
-async def my_balance(call: types.CallbackQuery):
-    cursor.execute("SELECT ball FROM users WHERE user_id = ?", (call.from_user.id,))
-    ball = cursor.fetchone()[0]
-    await call.message.answer(f"📊 Sizning balingiz: <b>{ball} ball</b>", parse_mode="HTML")
-    await call.answer()
-
-@dp.callback_query(F.data == "top_rating")
-async def top_rating(call: types.CallbackQuery):
-    cursor.execute("SELECT value FROM settings WHERE key = 'goliblar_soni'")
-    limit = int(cursor.fetchone()[0])
-    
-    cursor.execute("SELECT username, ball FROM users ORDER BY ball DESC LIMIT ?", (limit,))
+    cursor.execute("SELECT user_id, score FROM users ORDER BY score DESC LIMIT 10")
     top_users = cursor.fetchall()
     
-    text = f"🏆 <b>TOP {limit} Reyting (Eng ko'p ball to'plaganlar):</b>\n\n"
-    for i, u in enumerate(top_users, 1):
-        text += f"{i}. @{u[0]} — {u[1]} ball\n"
-    
-    await call.message.answer(text, parse_mode="HTML")
-    await call.answer()
+    text = "🏆 <b>Eng ko'p ball to'plagan Top 10 ishtirokchi:</b>\n\n"
+    for i, user in enumerate(top_users, 1):
+        text += f"{i}. ID: <code>{user[0]}</code> — <b>{user[1]} ball</b>\n"
+        
+    await call.message.answer(text)
 
-@dp.callback_query(F.data == "view_rules")
-async def view_rules(call: types.CallbackQuery):
-    cursor.execute("SELECT value FROM settings WHERE key = 'shartlar'")
-    shartlar = cursor.fetchone()[0]
-    await call.message.answer(f"🎁 <b>Konkurs shartlari va sovg'alar:</b>\n\n{shartlar}", parse_mode="HTML")
-    await call.answer()
+@dp.callback_query_handler(text="terms")
+async def callback_terms(call: types.CallbackQuery):
+    if not await check_subscription(call.from_user.id):
+        await call.message.answer("❌ Konkursda qatnashish uchun avval obuna bo'ling!", reply_markup=get_subscription_keyboard())
+        return
 
-# 5. ADMIN PANEL FUNKSIYALARI
-@dp.callback_query(F.data == "admin_panel")
-async def admin_panel(call: types.CallbackQuery):
-    if call.from_user.id != ADMIN_ID: return
-    builder = InlineKeyboardBuilder()
-    builder.button(text="📢 Ommaviy Xabar (Reklama)", callback_data="admin_reklama")
-    builder.button(text="➕ Kanal Qo'shish", callback_data="admin_add_channel")
-    builder.button(text="❌ Kanallarni Tozalash", callback_data="admin_clear_channels")
-    builder.button(text="✍️ Shartlarni o'zgartirish", callback_data="admin_edit_rules")
-    builder.button(text="⬅️ Chiqish", callback_data="back_to_menu")
-    builder.adjust(1)
-    await call.message.answer("⚙️ <b>Admin boshqaruv paneli:</b>", reply_markup=builder.as_markup(), parse_mode="HTML")
-    await call.answer()
+    text = (
+        "🎁 <b>Konkurs Shartlari:</b>\n\n"
+        "1. @Al_Matin_Mebel kanaliga a'zo bo'lish.\n"
+        "2. Al Matin Mebel group guruhiga a'zo bo'lish.\n"
+        "3. O'zingizning maxsus referal havolangizni do'stlaringizga tarqatish.\n\n"
+        "<i>Eng ko'p ball to'plagan ishtirokchilar qimmatbaho sovg'alar bilan taqdirlanadi!</i>"
+    )
+    await call.message.answer(text)
 
-@dp.callback_query(F.data == "back_to_menu")
-async def back_to_menu(call: types.CallbackQuery):
-    await call.message.edit_text("Asosiy menyu:", reply_markup=main_keyboard(call.from_user.id))
-
-# JONLI SHARTLARNI O'ZGARTIRISH KODI (Yangi qo'shildi)
-@dp.callback_query(F.data == "admin_edit_rules")
-async def admin_edit_rules(call: types.CallbackQuery, state: FSMContext):
-    if call.from_user.id != ADMIN_ID: return
-    await call.message.answer("✍️ Yangi konkurs shartlarini yuboring (Oddiy matn shaklida):")
-    await state.set_state(AdminStates.shart_kutish)
-    await call.answer()
-
-@dp.message(AdminStates.shart_kutish)
-async def save_new_rules(message: types.Message, state: FSMContext):
-    new_text = message.text
-    cursor.execute("UPDATE settings SET value = ? WHERE key = 'shartlar'", (new_text,))
-    conn.commit()
-    await message.answer("✅ Konkurs shartlari muvaffaqiyatli yangilandi!")
-    await state.clear()
-
-# Ommaviy xabar yuborish
-@dp.callback_query(F.data == "admin_reklama")
-async def admin_reklama(call: types.CallbackQuery, state: FSMContext):
-    await call.message.answer("Xabarni yuboring (Matn, rasm yoki video bo'lishi mumkin):")
-    await state.set_state(AdminStates.reklama_kutish)
-
-@dp.message(AdminStates.reklama_kutish)
-async def send_reklama(message: types.Message, state: FSMContext):
-    cursor.execute("SELECT user_id FROM users")
-    users = cursor.fetchall()
-    count = 0
-    for u in users:
-        try:
-            await message.copy_to(chat_id=u[0])
-            count += 1
-        except:
-            pass
-    await message.answer(f"📢 Xabar {count} ta foydalanuvchiga muvaffaqiyatli yuborildi!")
-    await state.clear()
-
-# Kanal qo'shish
-@dp.callback_query(F.data == "admin_add_channel")
-async def add_channel_start(call: types.CallbackQuery, state: FSMContext):
-    await call.message.answer("Kanal ID yoki usernamesini va nomini mana bunday formatda yuboring:\n\n<code>@kanal_username|Kanal nomi</code> yoki <code>-1001234567|Kanal nomi</code>", parse_mode="HTML")
-    await state.set_state(AdminStates.kanal_id_kutish)
-
-@dp.message(AdminStates.kanal_id_kutish)
-async def add_channel_finish(message: types.Message, state: FSMContext):
-    try:
-        ch_id, ch_name = message.text.split("|")
-        cursor.execute("INSERT OR REPLACE INTO channels (channel_id, channel_name) VALUES (?, ?)", (ch_id.strip(), ch_name.strip()))
-        conn.commit()
-        await message.answer("✅ Kanal muvaffaqiyatli qo'shildi!")
-    except:
-        await message.answer("❌ Xato format. Qaytadan urinib ko'ring.")
-    await state.clear()
-
-@dp.callback_query(F.data == "admin_clear_channels")
-async def clear_channels(call: types.CallbackQuery):
-    cursor.execute("DELETE FROM channels")
-    conn.commit()
-    await call.message.answer("🗑 Barcha majburiy kanallar o'chirildi!")
-    await call.answer()
-
-if __name__ == "__main__":
-    dp.run_polling(bot)
+# 4. BOTNI ISHGA TUSHIRISH
+if __name__ == '__main__':
+    executor.start_polling(dp, skip_updates=True)
