@@ -6,9 +6,8 @@ from aiogram.utils.keyboard import ReplyKeyboardBuilder
 from aiohttp import web
 
 # --- SOZLAMALAR ---
-# Bu yerga faqat @BotFather bergan eng oxirgi toza tokenni qo'ying
-BOT_TOKEN = "8646478674:AAE81PMd2Z01E21E94mxSfR3ezuYOq81X4A"
-ADMIN_ID = 8236886172  # Sizning Telegram ID raqamingiz
+BOT_TOKEN = "8646478674:AAE81PMd2Z01E2iE94mxSfR3ezuYOq81X4A"
+ADMIN_ID = 8236886172
 
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
@@ -37,35 +36,28 @@ async def cmd_start(message: types.Message):
 
 @dp.message(Command("admin"))
 async def cmd_admin(message: types.Message):
-    # ID tekshirish
     if message.from_user.id == ADMIN_ID:
         builder = ReplyKeyboardBuilder()
         builder.button(text="📊 Konkurs holati")
         builder.button(text="➕ Yangi konkurs ochish")
         builder.button(text="✉️ Foydalanuvchilarga xabar")
-        builder.adjust(2)  # Tugmalarni qatorlarga chiroyli taqsimlash
+        builder.adjust(2)
         
         await message.answer(
             "🔒 **Admin panelga xush kelibsiz!**\nKerakli bo'limni tanlang:",
             reply_markup=builder.as_markup(resize_keyboard=True)
         )
     else:
-        await message.answer("❌  Saz admin amassan!")
+        await message.answer("❌ Kechirasiz, siz admin emassiz!")
 
 # --- ASOSIY ISHGA TUSHISH QISMI ---
 async def main():
-    # Render o'chib qolmasligi uchun serverni fonda yoqamiz
     await start_server()
-    
-    # Konfliktlarni oldini olish uchun eski xabarlarni tozalab tashlaymiz
     await bot.delete_webhook(drop_pending_updates=True)
-    
-    # Telegram bilan aloqani boshlaymiz
     try:
         await dp.start_polling(bot)
     finally:
         await bot.session.close()
 
 if __name__ == "__main__":
-    import asyncio
     asyncio.run(main())
