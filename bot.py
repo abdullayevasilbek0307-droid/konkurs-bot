@@ -7,8 +7,8 @@ from aiohttp import web
 
 # --- SOZLAMALAR ---
 # Tokenni BotFather bergan yangi token bilan almashtiring
-BOT_TOKEN = "BOT_TOKEN = "8646478674:AAE81PMd2Z01E2iE94mxSfR3ezuYOq81X4A"  
-ADMIN_ID = 8236886172  # Sizning Telegram ID raqamingiz
+BOT_TOKEN = "8646478674:AAE81PMd2Z01E21E94mxSfR3ezuYOq81X4A"
+ADMIN_ID = 8236886172
 
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
